@@ -3,7 +3,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 
-def pdf_to_text(pdf_path: str) -> str:
+def pdf_to_text(pdf_path: str | Path) -> str:
     reader = PdfReader(pdf_path)
 
     pages = []
@@ -17,14 +17,15 @@ def pdf_to_text(pdf_path: str) -> str:
     return "\n".join(pages)
 
 
-if __name__ == "__main__":
-    pdf_path = "docs/Harness_Engineering_Anatomy_Architecture.pdf"
+def extract_text(source_path: str | Path) -> str:
+    """Read a PDF or a plain-text/Markdown source document."""
+    source = Path(source_path)
+    if not source.is_file():
+        raise FileNotFoundError(f"Document not found: {source}")
 
-    text = pdf_to_text(pdf_path)
-
-    Path("document.txt").write_text(
-        text,
-        encoding="utf-8",
-    )
-
-    print("PDF converted successfully!")
+    suffix = source.suffix.lower()
+    if suffix == ".pdf":
+        return pdf_to_text(source)
+    if suffix in {".txt", ".md"}:
+        return source.read_text(encoding="utf-8")
+    raise ValueError(f"Unsupported document type: {suffix or '(no extension)'}")

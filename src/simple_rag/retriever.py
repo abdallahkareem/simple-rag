@@ -1,44 +1,37 @@
-import numpy as np
-
-from rank_bm25 import BM25Okapi
 from collections import defaultdict
 
-from simple_rag.config import get_settings
-from simple_rag.embedder import embed_text, embed_query , vector_size
-from simple_rag.store import build_chroma_collection
+from rank_bm25 import BM25Okapi
+
+from simple_rag.embedder import embed_query
 
 
-def sparse_retrieval(query: str, chunks: list[str], top_k: int = 5) -> list[str]:
-    """Retrieve the most relevant chunks using BM25."""
-    tokenized_chunks = [chunk.split() for chunk in chunks]
-    bm25 = BM25Okapi(tokenized_chunks)
-    tokenized_query = query.split()
-    scores = bm25.get_scores(tokenized_query)
-    top_indices = np.argsort(scores)[::-1][:top_k]
-    return [chunks[i] for i in top_indices]
+def hybrid_retrieval(query: str, collection, top_k: int = 5, rrf_k: int = 60) -> list[str]:
+    """Fuse Chroma vector results with BM25 keyword results."""
+    if top_k <= 0:
+        return []
 
+    corpus = collection.get(include=["documents"])["documents"] or []
+    if not corpus:
+        return []
 
-def dense_retrieval(query: str, chunks: list[str], top_k: int = 5) -> list[str]:
-    """Retrieve the most relevant chunks using dense embeddings."""
-    query_embedding = embed_query(query)
-    chunk_embeddings = [embed_text(chunk) for chunk in chunks]
-    similarities = np.dot(chunk_embeddings, query_embedding)
-    top_indices = np.argsort(similarities)[::-1][:top_k]
-    return [chunks[i] for i in top_indices]
+    tokenized_corpus = [chunk.split() for chunk in corpus]
+    sparse_scores = BM25Okapi(tokenized_corpus).get_scores(query.split())
+    sparse_results = [
+        corpus[index]
+        for index in sorted(range(len(corpus)), key=lambda index: sparse_scores[index], reverse=True)[:top_k]
+    ]
 
-
-# Hybrid Retrieval using RRF (Reciprocal Rank Fusion)
-def hybrid_retrieval(query: str, chunks: list[str], top_k: int = 5 , rrf_k = 60) -> list[str]:
-    
-    sparse_results = sparse_retrieval(query, chunks, top_k)
-    dense_results = dense_retrieval(query, chunks, top_k)
-
+    dense_response = collection.query(
+        query_embeddings=[embed_query(query)],
+        n_results=min(len(corpus), top_k * 2),
+        include=["documents"],
+    )
+    dense_results = (dense_response.get("documents") or [[]])[0]
     scores = defaultdict(float)
 
     for results in (sparse_results, dense_results):
-      for rank, chunk in enumerate(results, start=1):
-        scores[chunk] += 1.0 / (rrf_k + rank)
+        for rank, chunk in enumerate(results, start=1):
+            scores[chunk] += 1.0 / (rrf_k + rank)
 
     combined = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
     return [chunk for chunk, _ in combined[:top_k]]

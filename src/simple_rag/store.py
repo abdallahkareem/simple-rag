@@ -1,22 +1,33 @@
+from pathlib import Path
+
 import chromadb
 
 from simple_rag.config import get_settings
-from simple_rag.chunker import chunk_text
-from simple_rag.embedder import embed_text , embed_query , vector_size
+from simple_rag.embedder import embed_text
 
 settings = get_settings()
 
 
-def build_chroma_collection(chunks):
-    """Get or create a Chroma collection."""
+def get_chroma_collection():
+    
     client = chromadb.PersistentClient(path=settings.CHROMA_DB_PATH)
-    collection = client.get_or_create_collection(name=settings.COLLECTION_NAME)
+    return client.get_or_create_collection(name=settings.COLLECTION_NAME)
 
-    collection.add(
+
+def build_chroma_collection(chunks: list[str], source: str | Path):
+    
+    source_id = str(Path(source).resolve())
+    collection = get_chroma_collection()
+
+    collection.delete(where={"source": source_id})
+    if not chunks:
+        return collection
+
+    collection.upsert(
         documents=chunks,
         embeddings=[embed_text(chunk) for chunk in chunks],
-        metadatas=[{"source": f"chunk_{i}"} for i in range(len(chunks))],
-        ids=[f"chunk_{i}" for i in range(len(chunks))],
+        metadatas=[{"source": source_id, "chunk": i} for i in range(len(chunks))],
+        ids=[f"{source_id}:{i}" for i in range(len(chunks))],
     )
     return collection
 

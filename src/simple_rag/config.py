@@ -4,6 +4,7 @@ class Settings(BaseSettings):
     PDF_PATH: str
     GROQ_API_KEY: str
     GROQ_BASE_URL: str
+    PREFERRED_MODELS: list[str]
     TOP_K: int
     CHUNK_SIZE: int
     CHUNK_OVERLAP: int

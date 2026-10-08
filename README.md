@@ -1,6 +1,6 @@
 # Simple RAG
 
-A small Python project for extracting text from a PDF, cleaning it, and splitting it into chunks. The current pipeline demonstrates ingestion and chunking; vector storage, retrieval, and answer generation are not implemented yet.
+A small retrieval-augmented generation (RAG) application. It extracts text from PDF, TXT, and Markdown files, cleans and chunks it, stores embeddings in Chroma, retrieves relevant passages with hybrid BM25/vector search, and generates answers with Groq.
 
 ## Requirements
 
@@ -16,44 +16,53 @@ uv sync
 cp .env.example .env
 ```
 
-The chunker reads `CHUNK_SIZE` and `CHUNK_OVERLAP` from `.env`. `GROQ_API_KEY` is currently required by the settings model but is not used by the pipeline; replace the example placeholder if you use code that calls Groq.
+Run setup and project commands consistently in either WSL or Windows. Virtual environments are platform-specific, so switching environments can make `uv` recreate `.venv` and reinstall packages.
 
-## Run the pipeline
+Set `GROQ_API_KEY` in `.env` to enable answer generation. The default source is `docs/document.txt`; set `PDF_PATH` to another PDF, TXT, or Markdown file to use a different document. `PREFERRED_MODELS` must be a JSON array in `.env`, for example:
 
-The ingestion module extracts text from `docs/Harness_Engineering_Anatomy_Architecture.pdf` and writes it to `document.txt`:
-
-```sh
-uv run python -m simple_rag.ingestion
+```dotenv
+PREFERRED_MODELS=["openai/gpt-oss-120b","openai/gpt-oss-20b"]
 ```
 
-Clean that extracted text into the path expected by the pipeline:
+The application tries models in order and moves to the next one if Groq reports that a model is unavailable. Configure model IDs that are enabled for your Groq account.
 
-```sh
-mkdir -p docs/processed
-uv run python -c 'from pathlib import Path; from simple_rag.cleaner import clean_document; source = Path("document.txt"); target = Path("docs/processed/cleaned_document.txt"); target.write_text(clean_document(source.read_text(encoding="utf-8")), encoding="utf-8")'
-```
+## Run end to end
 
-Then split the cleaned text and print the first chunk and total chunk count:
+Run the pipeline to index the configured document and then start an interactive question-and-answer session:
 
 ```sh
 uv run python -m simple_rag.pipeline
 ```
 
-Run these commands from the repository root. To process a different PDF, update the `pdf_path` in `src/simple_rag/ingestion.py` first.
+Or index a document explicitly, then ask one question or start a chat:
 
-## Configuration
+```sh
+uv run python -m simple_rag.pipeline ingest docs/document.txt
+uv run python -m simple_rag.pipeline ask "What is this document about?"
+uv run python -m simple_rag.pipeline chat
+```
 
-| Setting         | Purpose                                                                          | Example          |
-| --------------- | -------------------------------------------------------------------------------- | ---------------- |
-| `PDF_PATH`      | PDF path setting (the ingestion script currently uses a hard-coded path instead) | `docs/input.pdf` |
-| `GROQ_API_KEY`  | Groq API key setting; not currently used by the pipeline                         | `your-key`       |
-| `CHUNK_SIZE`    | Maximum chunk size in characters                                                 | `1000`           |
-| `CHUNK_OVERLAP` | Overlap between adjacent chunks in characters                                    | `200`            |
+Run commands from the repository root. Re-ingesting a source replaces its old chunks without deleting other sources in the collection.
 
-## Other commands
-
-Run the package's greeting entry point:
+The `simple-rag` command runs the same pipeline:
 
 ```sh
 uv run simple-rag
 ```
+
+On the first run, `uv` installs the dependencies and the embedding model is downloaded. In WSL, a `Failed to hardlink files` warning is harmless; to silence it, run `export UV_LINK_MODE=copy` before `uv sync`. A PyTorch CUDA driver warning means embeddings will use CPU instead. An unauthenticated Hugging Face warning only indicates lower download rate limits.
+
+## Configuration
+
+| Setting            | Purpose                                       | Example                                                  |
+| ------------------ | --------------------------------------------- | -------------------------------------------------------- |
+| `PDF_PATH`         | Default PDF, TXT, or Markdown source          | `docs/document.txt`                                      |
+| `GROQ_API_KEY`     | Groq API key for answer generation            | `your-key`                                               |
+| `GROQ_BASE_URL`    | OpenAI-compatible Groq API endpoint           | `https://api.groq.com/openai/v1`                         |
+| `PREFERRED_MODELS` | JSON array of model IDs, tried in order       | `["openai/gpt-oss-120b","openai/gpt-oss-20b"]`         |
+| `TOP_K`            | Number of context chunks retrieved            | `10`                                                     |
+| `CHUNK_SIZE`       | Maximum chunk size in characters              | `1000`                                                   |
+| `CHUNK_OVERLAP`    | Overlap between adjacent chunks in characters | `200`                                                    |
+| `EMBEDDING_MODEL`  | Sentence Transformers model used for vectors  | `sentence-transformers/all-MiniLM-L6-v2`                 |
+| `COLLECTION_NAME`  | Chroma collection for indexed chunks          | `harness_data`                                           |
+| `CHROMA_DB_PATH`   | Persistent Chroma database directory          | `chromadb`                                               |

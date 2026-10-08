@@ -1,24 +1,26 @@
-# Cross Encoder for Reranking
-from sentence_transformers import SentenceTransformer , CrossEncoder
+from functools import lru_cache
+
+from sentence_transformers import SentenceTransformer
 from simple_rag.config import get_settings
 
 settings = get_settings()
 
-def load_model():
 
-  embedder = SentenceTransformer(settings.EMBEDDING_MODEL)
-  return embedder
+@lru_cache(maxsize=1)
+def load_model() -> SentenceTransformer:
+        return SentenceTransformer(settings.EMBEDDING_MODEL)
 
 
 def embed_text(text: str) -> list[float]:
-    embedder = load_model()
-    return embedder.encode(text).tolist()
+    return load_model().encode(text).tolist()
 
 
 def embed_query(query: str) -> list[float]:
-    embedder = load_model()
-    return embedder.encode(query).tolist()
+    return load_model().encode(query).tolist()
 
-def vector_size():
-    embedder = load_model()
-    return embedder.get_sentence_embedding_dimension()
+
+def vector_size() -> int:
+    dimension = load_model().get_sentence_embedding_dimension()
+    if dimension is None:
+        raise RuntimeError("The embedding model did not report its vector size.")
+    return dimension

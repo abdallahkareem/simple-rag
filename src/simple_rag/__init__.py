@@ -1,2 +1,4 @@
 def main() -> None:
-    print("Hello from simple-rag!")
+    from simple_rag.pipeline import main as run_pipeline
+
+    run_pipeline()
